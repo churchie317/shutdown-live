@@ -9,7 +9,7 @@ defmodule Shutdown.Questions do
     |> String.split("\n", trim: true)
     |> Enum.map(&String.split(&1, ","))
     |> Enum.map(fn [question, category, points] ->
-      Shutdown.Question.new(question, category, points)
+      %{question: question, category: category, points: points}
     end)
   end
 end
