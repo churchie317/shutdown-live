@@ -22,6 +22,8 @@ defmodule Shutdown.Game do
       |> Enum.with_index(1)
       |> Enum.map(fn {question, index} -> %Question{question | id: index} end)
       |> Enum.chunk_every(round_size)
+      |> Enum.with_index(1)
+      |> Enum.reduce(%{}, fn {round, number}, acc -> Map.put(acc, number, round) end)
 
     %Game{questions: questions}
   end
@@ -39,9 +41,7 @@ defmodule Shutdown.Game do
   Shows the current question of the given game.
   """
   def show(game) do
-    game.questions
-    |> Enum.at(game.current_round)
-    |> Enum.at(game.current_question)
+    get_current_question(game)
   end
 
   @doc """
@@ -49,25 +49,33 @@ defmodule Shutdown.Game do
   remain, checks for a winner.
   """
   def advance(game) do
-    game.questions
-    |> Enum.at(game.current_round)
+    game.questions[game.current_round]
     |> increment_question_or_round(game)
   end
 
   def update_scores(game, team, points) do
-    scores =
-      game.scores
-      |> Map.update!(team, fn score -> score + points end)
-
-    %{game | scores: scores}
+    scores = update_in(game.scores[team], fn score -> score + points end)
+    %Game{game | scores: scores}
   end
 
-  def answer(team, answer, game) do
-    answer =
-      get_current_question(game)
+  @doc """
+  Marks a question as answered by a team, along with their answer so that it may
+  be reviewed later in the game.
+  """
+  def submit_answer(game, team, answer) do
+    question = get_current_question(game)
 
-    game.questions
-    |> List.flatten()
+    case question.answers[team] do
+      res when is_binary(res) ->
+        {:error, :answer_exists}
+
+      _ ->
+        Map.new()
+        |> Map.put(team, answer)
+        |> Map.merge(question.answers)
+        |> Map.merge(question)
+        |> mark_answer(game)
+    end
   end
 
   defp increment_question_or_round(round, game) do
@@ -80,9 +88,24 @@ defmodule Shutdown.Game do
     end
   end
 
+  defp mark_answer(answered_question, game) do
+    game =
+      game
+      |> Map.update!(:questions, fn rounds ->
+        Enum.map(rounds, fn round ->
+          Enum.map(round, fn question ->
+            case question.id == answered_question.id do
+              true -> answered_question
+              false -> question
+            end
+          end)
+        end)
+      end)
+
+    {:ok, game}
+  end
+
   defp get_current_question(game) do
-    game.questions
-    |> Enum.at(game.current_round)
-    |> Enum.at(game.current_question)
+    Enum.at(game.questions[game.current_round], game.current_question)
   end
 end
